@@ -4,6 +4,7 @@ import os
 import numpy as np
 import tensorflow as tf
 from keras.utils.data_utils import get_file
+import sys
 
 
 def get_xception_filename(key):
@@ -73,34 +74,5 @@ def extract_tensors_from_checkpoint_file(filename, output_folder='weights', net_
             np.save(path, arr)
             print("tensor_name: ", key)
 
-CKPT_URL = 'http://download.tensorflow.org/models/deeplabv3_pascal_trainval_2018_01_04.tar.gz'
-CKPT_URL_MOBILE = 'http://download.tensorflow.org/models/deeplabv3_mnv2_pascal_trainval_2018_01_29.tar.gz'
-MODEL_DIR = 'models'
-MODEL_SUBDIR = 'deeplabv3_pascal_trainval'
-MODEL_SUBDIR_MOBILE = 'deeplabv3_mnv2_pascal_trainval'
-
-if not os.path.exists(MODEL_DIR):
-    os.makedirs(MODEL_DIR)
-
-checkpoint_tar = get_file(
-    'deeplabv3_pascal_trainval_2018_01_04.tar.gz',
-    CKPT_URL,
-    extract=True,
-    cache_subdir='',
-    cache_dir=MODEL_DIR)
-
-checkpoint_tar_mobile = get_file(
-    'deeplabv3_mnv2_pascal_trainval_2018_01_29.tar.gz',
-    CKPT_URL_MOBILE,
-    extract=True,
-    cache_subdir='',
-    cache_dir=MODEL_DIR)
-
-checkpoint_file = os.path.join(MODEL_DIR, MODEL_SUBDIR, 'model.ckpt')
 extract_tensors_from_checkpoint_file(
-    checkpoint_file, net_name='xception', output_folder='weights/xception')
-
-checkpoint_file = os.path.join(
-    MODEL_DIR, MODEL_SUBDIR_MOBILE, 'model.ckpt-30000')
-extract_tensors_from_checkpoint_file(
-    checkpoint_file, net_name='mobilenetv2', output_folder='weights/mobilenetv2')
+    sys.argv[1], net_name='mobilenetv2', output_folder='weights/mobilenetv2')
