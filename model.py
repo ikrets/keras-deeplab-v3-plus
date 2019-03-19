@@ -27,10 +27,11 @@ from __future__ import print_function
 
 import numpy as np
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras import layers
 from tensorflow.keras.layers import Input
+from tensorflow.keras.layers import Softmax
 from tensorflow.keras.layers import Activation
 from tensorflow.keras.layers import Concatenate
 from tensorflow.keras.layers import Add
@@ -425,6 +426,7 @@ def Deeplabv3(weights='pascal_voc', input_tensor=None, input_shape=(512, 512, 3)
 
     x = Conv2D(classes, (1, 1), padding='same', kernel_regularizer=l2_reg, name=last_layer_name)(x)
     x = BilinearUpsampling(output_size=(input_shape[0], input_shape[1]))(x)
+    x = Softmax()(x)
 
     # Ensure that the model takes into account
     # any potential predecessors of `input_tensor`.

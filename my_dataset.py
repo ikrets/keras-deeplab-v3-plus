@@ -3,7 +3,7 @@ import json
 import os
 import numpy as np
 from skimage.draw import polygon
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import keras
 import augmentation
 

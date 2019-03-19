@@ -2,8 +2,6 @@ import tensorflow as tf
 from tensorflow.python.ops import control_flow_ops
 from inception_preprocessing import distort_color, apply_with_random_selector
 
-slim = tf.contrib.slim
-
 def flip_randomly_left_right_image_with_annotation(image_tensor, annotation_tensor):
     """Accepts image tensor and annotation tensor and returns randomly flipped tensors of both.
     The function performs random flip of image and annotation tensors with probability of 1/2
@@ -28,16 +26,16 @@ def flip_randomly_left_right_image_with_annotation(image_tensor, annotation_tens
     
     # Random variable: two possible outcomes (0 or 1)
     # with a 1 in 2 chance
-    random_var = tf.random_uniform(maxval=2, dtype=tf.int32, shape=[])
+    random_var = tf.compat.v1.random_uniform(maxval=2, dtype=tf.int32, shape=[])
 
 
-    randomly_flipped_img = control_flow_ops.cond(pred=tf.equal(random_var, 0),
-                                                 fn1=lambda: tf.image.flip_up_down(image_tensor),
-                                                 fn2=lambda: image_tensor)
+    randomly_flipped_img = tf.cond(pred=tf.equal(random_var, 0),
+                                                 true_fn=lambda: tf.image.flip_up_down(image_tensor),
+                                                 false_fn=lambda: image_tensor)
 
-    randomly_flipped_annotation = control_flow_ops.cond(pred=tf.equal(random_var, 0),
-                                                        fn1=lambda: tf.image.flip_up_down(annotation_tensor),
-                                                        fn2=lambda: annotation_tensor)
+    randomly_flipped_annotation = tf.cond(pred=tf.equal(random_var, 0),
+                                                        true_fn=lambda: tf.image.flip_up_down(annotation_tensor),
+                                                        false_fn=lambda: annotation_tensor)
     
     return randomly_flipped_img, randomly_flipped_annotation
 
