@@ -1,10 +1,5 @@
 from collections import namedtuple
-import json
-import os
-import numpy as np
-from skimage.draw import polygon
 import tensorflow as tf
-import keras
 import augmentation
 
 Sample = namedtuple('Sample', ('image', 'polygon'))
@@ -40,18 +35,18 @@ class MyDataset:
     def _parse_sample(self, sample):
         features = {
             'image':
-                tf.FixedLenFeature((), tf.string, default_value=''),
+                tf.io.FixedLenFeature((), tf.string, default_value=''),
             'height':
-                tf.FixedLenFeature((), tf.int64, default_value=0),
+                tf.io.FixedLenFeature((), tf.int64, default_value=0),
             'width':
-                tf.FixedLenFeature((), tf.int64, default_value=0),
+                tf.io.FixedLenFeature((), tf.int64, default_value=0),
             'mask':
-                tf.FixedLenFeature((), tf.string, default_value=''),
+                tf.io.FixedLenFeature((), tf.string, default_value=''),
             'name':
-                tf.FixedLenFeature((), tf.string, default_value=''),
+                tf.io.FixedLenFeature((), tf.string, default_value=''),
         }
 
-        parsed_features = tf.parse_single_example(sample, features)
+        parsed_features = tf.io.parse_single_example(sample, features)
 
         sample = {
             'image': self._decode_image(parsed_features['image'], 3),
@@ -64,7 +59,7 @@ class MyDataset:
         return sample
     
     def _preprocess_sample(self, sample):
-        preprocess = lambda x: (2.0 / 255.0) * tf.to_float(x) - 1.0
+        preprocess = lambda x: (2.0 / 255.0) * tf.cast(x, tf.float32) - 1.0
         sample['image'] = preprocess(sample['image'])
         return [sample['image'], 
                 tf.one_hot(tf.reshape(sample['label'], shape=(self.shape[0], self.shape[1])), 

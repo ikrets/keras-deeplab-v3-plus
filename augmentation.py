@@ -2,8 +2,6 @@ import tensorflow as tf
 from tensorflow.python.ops import control_flow_ops
 from inception_preprocessing import distort_color, apply_with_random_selector
 
-slim = tf.contrib.slim
-
 def flip_randomly_left_right_image_with_annotation(image_tensor, annotation_tensor):
     """Accepts image tensor and annotation tensor and returns randomly flipped tensors of both.
     The function performs random flip of image and annotation tensors with probability of 1/2
@@ -28,16 +26,16 @@ def flip_randomly_left_right_image_with_annotation(image_tensor, annotation_tens
     
     # Random variable: two possible outcomes (0 or 1)
     # with a 1 in 2 chance
-    random_var = tf.random_uniform(maxval=2, dtype=tf.int32, shape=[])
+    random_var = tf.random.uniform(maxval=2, dtype=tf.int32, shape=[])
 
 
     randomly_flipped_img = control_flow_ops.cond(pred=tf.equal(random_var, 0),
-                                                 fn1=lambda: tf.image.flip_up_down(image_tensor),
-                                                 fn2=lambda: image_tensor)
+                                                 true_fn=lambda: tf.image.flip_up_down(image_tensor),
+                                                 false_fn=lambda: image_tensor)
 
     randomly_flipped_annotation = control_flow_ops.cond(pred=tf.equal(random_var, 0),
-                                                        fn1=lambda: tf.image.flip_up_down(annotation_tensor),
-                                                        fn2=lambda: annotation_tensor)
+                                                        true_fn=lambda: tf.image.flip_up_down(annotation_tensor),
+                                                        false_fn=lambda: annotation_tensor)
     
     return randomly_flipped_img, randomly_flipped_annotation
 
@@ -63,7 +61,7 @@ def distort_randomly_image_color(image_tensor, fast_mode=False):
     """
     
     # Make the range to be in [0,1]
-    img_float_zero_one_range = tf.to_float(image_tensor) / 255
+    img_float_zero_one_range = tf.cast(image_tensor, tf.float32) / 255
     
     # Randomly distort the color of image. There are 4 ways to do it.
     # Credit: TF-Slim
@@ -136,22 +134,22 @@ def scale_randomly_image_with_annotation_with_fixed_size_output(img_tensor,
     # Convert to int_32 to be able to differentiate
     # between zeros that was used for padding and
     # zeros that represent a particular semantic class
-    annotation_batched = tf.to_int32(annotation_batched)
+    annotation_batched = tf.cast(annotation_batched, tf.int32)
 
     # Get height and width tensors
     input_shape = tf.shape(img_batched)[1:3]
 
-    input_shape_float = tf.to_float(input_shape)
+    input_shape_float = tf.cast(input_shape, tf.float32)
 
     scales = output_shape / input_shape_float
 
-    rand_var = tf.random_uniform(shape=[1],
+    rand_var = tf.random.uniform(shape=[1],
                                  minval=min_relative_random_scale_change,
                                  maxval=max_realtive_random_scale_change)
 
     final_scale = tf.reduce_min(scales) * rand_var
 
-    scaled_input_shape = tf.to_int32(tf.round(input_shape_float * final_scale))
+    scaled_input_shape = tf.cast(tf.round(input_shape_float * final_scale), tf.int32)
     
     # Resize the image and annotation using nearest neighbour
     # Be careful -- may cause aliasing.

@@ -50,7 +50,8 @@ WEIGHTS_PATH_MOBILE = "https://github.com/bonlime/keras-deeplab-v3-plus/releases
 WEIGHTS_PATH_X_CS = "https://github.com/bonlime/keras-deeplab-v3-plus/releases/download/1.2/deeplabv3_xception_tf_dim_ordering_tf_kernels_cityscapes.h5"
 WEIGHTS_PATH_MOBILE_CS = "https://github.com/bonlime/keras-deeplab-v3-plus/releases/download/1.2/deeplabv3_mobilenetv2_tf_dim_ordering_tf_kernels_cityscapes.h5"
                          
-def SepConv_BN(x, filters, prefix, stride=1, kernel_size=3, rate=1, depth_activation=False, epsilon=1e-3):
+def SepConv_BN(x, filters, prefix, stride=1, kernel_size=3, rate=1, depth_activation=False, epsilon=1e-3,
+               weight_decay=0):
     """ SepConv with BN between depthwise & pointwise. Optionally add activation after BN
         Implements right "same" padding for even kernel sizes
         Args:
@@ -76,13 +77,17 @@ def SepConv_BN(x, filters, prefix, stride=1, kernel_size=3, rate=1, depth_activa
 
     if not depth_activation:
         x = Activation('relu')(x)
+
+    regularizer = tf.keras.regularizers.l2(weight_decay)
     x = DepthwiseConv2D((kernel_size, kernel_size), strides=(stride, stride), dilation_rate=(rate, rate),
-                        padding=depth_padding, use_bias=False, name=prefix + '_depthwise')(x)
+                        padding=depth_padding, use_bias=False, name=prefix + '_depthwise',
+                        kernel_regularizer=regularizer)(x)
     x = BatchNormalization(name=prefix + '_depthwise_BN', epsilon=epsilon)(x)
     if depth_activation:
         x = Activation('relu')(x)
     x = Conv2D(filters, (1, 1), padding='same',
-               use_bias=False, name=prefix + '_pointwise')(x)
+               use_bias=False, name=prefix + '_pointwise',
+               kernel_regularizer=regularizer)(x)
     x = BatchNormalization(name=prefix + '_pointwise_BN', epsilon=epsilon)(x)
     if depth_activation:
         x = Activation('relu')(x)
@@ -90,7 +95,7 @@ def SepConv_BN(x, filters, prefix, stride=1, kernel_size=3, rate=1, depth_activa
     return x
 
 
-def _conv2d_same(x, filters, prefix, stride=1, kernel_size=3, rate=1):
+def _conv2d_same(x, filters, prefix, stride=1, kernel_size=3, rate=1, weight_decay=0):
     """Implements right 'same' padding for even kernel sizes
         Without this there is a 1 pixel drift when stride = 2
         Args:
@@ -101,13 +106,16 @@ def _conv2d_same(x, filters, prefix, stride=1, kernel_size=3, rate=1):
             kernel_size: kernel size for depthwise convolution
             rate: atrous rate for depthwise convolution
     """
+    regularizer = tf.keras.regularizers.l2(weight_decay)
+
     if stride == 1:
         return Conv2D(filters,
                       (kernel_size, kernel_size),
                       strides=(stride, stride),
                       padding='same', use_bias=False,
                       dilation_rate=(rate, rate),
-                      name=prefix)(x)
+                      name=prefix,
+                      kernel_regularizer=regularizer)(x)
     else:
         kernel_size_effective = kernel_size + (kernel_size - 1) * (rate - 1)
         pad_total = kernel_size_effective - 1
@@ -119,7 +127,8 @@ def _conv2d_same(x, filters, prefix, stride=1, kernel_size=3, rate=1):
                       strides=(stride, stride),
                       padding='valid', use_bias=False,
                       dilation_rate=(rate, rate),
-                      name=prefix)(x)
+                      name=prefix,
+                      kernel_regularizer=regularizer)(x)
 
 
 def _xception_block(inputs, depth_list, prefix, skip_connection_type, stride,
@@ -175,7 +184,9 @@ def _make_divisible(v, divisor, min_value=None):
     return new_v
 
 
-def _inverted_res_block(inputs, expansion, stride, alpha, filters, block_id, skip_connection, rate=1):
+def _inverted_res_block(inputs, expansion, stride, alpha, filters, block_id, skip_connection, weight_decay, rate=1):
+    regularizer = tf.keras.regularizers.l2(weight_decay)
+
     in_channels =  inputs.shape[-1] #inputs._keras_shape[-1]
     pointwise_conv_filters = int(filters * alpha)
     pointwise_filters = _make_divisible(pointwise_conv_filters, 8)
@@ -186,7 +197,8 @@ def _inverted_res_block(inputs, expansion, stride, alpha, filters, block_id, ski
 
         x = Conv2D(expansion * in_channels, kernel_size=1, padding='same',
                    use_bias=False, activation=None,
-                   name=prefix + 'expand')(x)
+                   name=prefix + 'expand',
+                   kernel_regularizer=regularizer)(x)
         x = BatchNormalization(epsilon=1e-3, momentum=0.999,
                                name=prefix + 'expand_BN')(x)
         x = Activation(relu6, name=prefix + 'expand_relu')(x)
@@ -195,6 +207,7 @@ def _inverted_res_block(inputs, expansion, stride, alpha, filters, block_id, ski
     # Depthwise
     x = DepthwiseConv2D(kernel_size=3, strides=stride, activation=None,
                         use_bias=False, padding='same', dilation_rate=(rate, rate),
+                        kernel_regularizer=regularizer,
                         name=prefix + 'depthwise')(x)
     x = BatchNormalization(epsilon=1e-3, momentum=0.999,
                            name=prefix + 'depthwise_BN')(x)
@@ -204,6 +217,7 @@ def _inverted_res_block(inputs, expansion, stride, alpha, filters, block_id, ski
     # Project
     x = Conv2D(pointwise_filters,
                kernel_size=1, padding='same', use_bias=False, activation=None,
+               kernel_regularizer=regularizer,
                name=prefix + 'project')(x)
     x = BatchNormalization(epsilon=1e-3, momentum=0.999,
                            name=prefix + 'project_BN')(x)
@@ -217,7 +231,9 @@ def _inverted_res_block(inputs, expansion, stride, alpha, filters, block_id, ski
     return x
 
 
-def Deeplabv3(weights='pascal_voc', input_tensor=None, input_shape=(512, 512, 3), classes=21, backbone='mobilenetv2', OS=16, alpha=1., activation=None):
+def Deeplabv3(weights='pascal_voc', input_tensor=None, input_shape=(512, 512, 3), classes=21, backbone='mobilenetv2', OS=16, alpha=1., activation=None,
+              weight_decay=1e-4,
+              dropout=0.1):
     """ Instantiates the Deeplabv3+ architecture
 
     Optionally loads weights pre-trained
@@ -270,6 +286,8 @@ def Deeplabv3(weights='pascal_voc', input_tensor=None, input_shape=(512, 512, 3)
     else:
         img_input = input_tensor
 
+    regularizer = tf.keras.regularizers.l2(weight_decay)
+
     if backbone == 'xception':
         if OS == 8:
             entry_block3_stride = 1
@@ -314,57 +332,62 @@ def Deeplabv3(weights='pascal_voc', input_tensor=None, input_shape=(512, 512, 3)
                             depth_activation=True)
 
     else:
+
         OS = 8
         first_block_filters = _make_divisible(32 * alpha, 8)
         x = Conv2D(first_block_filters,
                    kernel_size=3,
                    strides=(2, 2), padding='same',
-                   use_bias=False, name='Conv')(img_input)
+                   use_bias=False, name='Conv',
+                   kernel_regularizer=regularizer)(img_input)
         x = BatchNormalization(
             epsilon=1e-3, momentum=0.999, name='Conv_BN')(x)
         x = Activation(relu6, name='Conv_Relu6')(x)
 
         x = _inverted_res_block(x, filters=16, alpha=alpha, stride=1,
-                                expansion=1, block_id=0, skip_connection=False)
+                                expansion=1, block_id=0, skip_connection=False,
+                                weight_decay=weight_decay)
 
         x = _inverted_res_block(x, filters=24, alpha=alpha, stride=2,
-                                expansion=6, block_id=1, skip_connection=False)
+                                expansion=6, block_id=1, skip_connection=False,
+                                weight_decay=weight_decay)
         x = _inverted_res_block(x, filters=24, alpha=alpha, stride=1,
-                                expansion=6, block_id=2, skip_connection=True)
+                                expansion=6, block_id=2, skip_connection=True,
+                                weight_decay=weight_decay)
 
         x = _inverted_res_block(x, filters=32, alpha=alpha, stride=2,
-                                expansion=6, block_id=3, skip_connection=False)
+                                expansion=6, block_id=3, skip_connection=False, weight_decay=weight_decay)
         x = _inverted_res_block(x, filters=32, alpha=alpha, stride=1,
-                                expansion=6, block_id=4, skip_connection=True)
+                                expansion=6, block_id=4, skip_connection=True, weight_decay=weight_decay)
         x = _inverted_res_block(x, filters=32, alpha=alpha, stride=1,
-                                expansion=6, block_id=5, skip_connection=True)
+                                expansion=6, block_id=5, skip_connection=True, weight_decay=weight_decay)
 
         # stride in block 6 changed from 2 -> 1, so we need to use rate = 2
         x = _inverted_res_block(x, filters=64, alpha=alpha, stride=1,  # 1!
-                                expansion=6, block_id=6, skip_connection=False)
+                                expansion=6, block_id=6, skip_connection=False, weight_decay=weight_decay)
         x = _inverted_res_block(x, filters=64, alpha=alpha, stride=1, rate=2,
-                                expansion=6, block_id=7, skip_connection=True)
+                                expansion=6, block_id=7, skip_connection=True, weight_decay=weight_decay)
         x = _inverted_res_block(x, filters=64, alpha=alpha, stride=1, rate=2,
-                                expansion=6, block_id=8, skip_connection=True)
+                                expansion=6, block_id=8, skip_connection=True, weight_decay=weight_decay)
         x = _inverted_res_block(x, filters=64, alpha=alpha, stride=1, rate=2,
-                                expansion=6, block_id=9, skip_connection=True)
+                                expansion=6, block_id=9, skip_connection=True, weight_decay=weight_decay)
 
         x = _inverted_res_block(x, filters=96, alpha=alpha, stride=1, rate=2,
-                                expansion=6, block_id=10, skip_connection=False)
+                                expansion=6, block_id=10, skip_connection=False, weight_decay=weight_decay)
         x = _inverted_res_block(x, filters=96, alpha=alpha, stride=1, rate=2,
-                                expansion=6, block_id=11, skip_connection=True)
+                                expansion=6, block_id=11, skip_connection=True, weight_decay=weight_decay)
         x = _inverted_res_block(x, filters=96, alpha=alpha, stride=1, rate=2,
-                                expansion=6, block_id=12, skip_connection=True)
+                                expansion=6, block_id=12, skip_connection=True, weight_decay=weight_decay)
 
         x = _inverted_res_block(x, filters=160, alpha=alpha, stride=1, rate=2,  # 1!
-                                expansion=6, block_id=13, skip_connection=False)
+                                expansion=6, block_id=13, skip_connection=False, weight_decay=weight_decay)
         x = _inverted_res_block(x, filters=160, alpha=alpha, stride=1, rate=4,
-                                expansion=6, block_id=14, skip_connection=True)
+                                expansion=6, block_id=14, skip_connection=True, weight_decay=weight_decay)
         x = _inverted_res_block(x, filters=160, alpha=alpha, stride=1, rate=4,
-                                expansion=6, block_id=15, skip_connection=True)
+                                expansion=6, block_id=15, skip_connection=True, weight_decay=weight_decay)
 
         x = _inverted_res_block(x, filters=320, alpha=alpha, stride=1, rate=4,
-                                expansion=6, block_id=16, skip_connection=False)
+                                expansion=6, block_id=16, skip_connection=False, weight_decay=weight_decay)
 
     # end of feature extractor
 
@@ -375,7 +398,8 @@ def Deeplabv3(weights='pascal_voc', input_tensor=None, input_shape=(512, 512, 3)
     b4 = GlobalAveragePooling2D()(x)
     b4 = tf.expand_dims(tf.expand_dims(b4, 1),1) # from (b_size, channels)->(b_size, 1, 1, channels)
     b4 = Conv2D(256, (1, 1), padding='same',
-                use_bias=False, name='image_pooling')(b4)
+                use_bias=False, name='image_pooling',
+                kernel_regularizer=regularizer)(b4)
     b4 = BatchNormalization(name='image_pooling_BN', epsilon=1e-5)(b4)
     b4 = Activation('relu')(b4)
     #upsample. have to use compat because of the option align_corners
@@ -383,7 +407,8 @@ def Deeplabv3(weights='pascal_voc', input_tensor=None, input_shape=(512, 512, 3)
                                                     method='bilinear',align_corners=True))(b4) 
 
     # simple 1x1
-    b0 = Conv2D(256, (1, 1), padding='same', use_bias=False, name='aspp0')(x)
+    b0 = Conv2D(256, (1, 1), padding='same', use_bias=False, name='aspp0',
+                kernel_regularizer=regularizer)(x)
     b0 = BatchNormalization(name='aspp0_BN', epsilon=1e-5)(b0)
     b0 = Activation('relu', name='aspp0_activation')(b0)
 
@@ -405,10 +430,11 @@ def Deeplabv3(weights='pascal_voc', input_tensor=None, input_shape=(512, 512, 3)
         x = Concatenate()([b4, b0])
 
     x = Conv2D(256, (1, 1), padding='same',
-               use_bias=False, name='concat_projection')(x)
+               use_bias=False, name='concat_projection',
+               kernel_regularizer=regularizer)(x)
     x = BatchNormalization(name='concat_projection_BN', epsilon=1e-5)(x)
     x = Activation('relu')(x)
-    x = Dropout(0.1)(x)
+    x = Dropout(dropout)(x)
     # DeepLab v.3+ decoder
 
     if backbone == 'xception':
@@ -434,7 +460,9 @@ def Deeplabv3(weights='pascal_voc', input_tensor=None, input_shape=(512, 512, 3)
     else:
         last_layer_name = 'custom_logits_semantic'
 
-    x = Conv2D(classes, (1, 1), padding='same', name=last_layer_name)(x)
+    x = Conv2D(classes, (1, 1), padding='same', kernel_regularizer=regularizer,
+               bias_regularizer=regularizer,
+               name=last_layer_name)(x)
     x = Lambda(lambda xx: tf.compat.v1.image.resize(xx,
                                                    tf.shape(img_input)[1:3],
                                                    method='bilinear',align_corners=True))(x) 
@@ -483,4 +511,4 @@ def preprocess_input(x):
     # Returns
         Input array scaled to [-1.,1.]
     """
-    return imagenet_utils.preprocess_input(x, mode='tf')
+    return preprocess_input(x, mode='tf')
